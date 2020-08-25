@@ -49,23 +49,29 @@ public class ClientMultiThreadedExecution {
     public static String uname;
     public static String passwd;
     public static String hostname;
+    public static String fileType;
     public static String podID = null;
     private static HttpRequestResponse sHrr;
     private static Map<String, String> sHeaders = new HashMap<String, String>();
     private static Map<String, String> mctMapList = new HashMap<>();
     private static List<String> mctIdList;
 
-    static {
-        sHeaders.put("Accept", "application/xml");
-    }
-
     public static void main(String[] args) throws IOException {
-    
-        if (args.length < 2 ) {
-            System.out.println("to run -> java -jar knowYourETL.jar <IICSusername> <IICSpassword> <hostname like dm-us.informaticacloud.com>");
+
+        if (args.length < 2) {
+            System.out.println();
+            System.out.println("to run -> java -jar knowYourETL.jar <IICSusername> <IICSpassword> <hostname like dm-us.informaticacloud.com> <OutPutType as xml/json>");
             System.exit(0);
         }
-        
+        uname = args[0];
+        passwd = args[1];
+        hostname = args[2];
+        if (args[3].equalsIgnoreCase("xml")) {
+            ClientMultiThreadedExecution.fileType = "xml";
+        }
+        if (args[3].equalsIgnoreCase("json")) {
+            ClientMultiThreadedExecution.fileType = "json";
+        }
         ClientMultiThreadedExecution.mctIdList = new ArrayList();
         ClientMultiThreadedExecution.login();
         ClientMultiThreadedExecution.getMttList();
@@ -90,7 +96,7 @@ public class ClientMultiThreadedExecution {
     }
 
     public static void devideNconcur(List<String> batch) throws IOException, InterruptedException {
-         // Create an HttpClient with the ThreadSafeClientConnManager.
+        // Create an HttpClient with the ThreadSafeClientConnManager.
         // This connection manager must be used if more than one thread will
         // be using the HttpClient.
         PoolingHttpClientConnectionManager cm = new PoolingHttpClientConnectionManager();
@@ -100,15 +106,15 @@ public class ClientMultiThreadedExecution {
                 .setConnectionManager(cm)
                 .build()) {
             // create an array of URIs to perform GETs on
-            List<String> mctURI=new ArrayList();
-            batch.forEach((mcid)->{
-                    mctURI.add(ClientMultiThreadedExecution.serverUrl + "/api/v2/mttask/"+mcid);
+            List<String> mctURI = new ArrayList();
+            batch.forEach((mcid) -> {
+                mctURI.add(ClientMultiThreadedExecution.serverUrl + "/api/v2/mttask/" + mcid);
             });
             /*String[] urisToGet = {
                 ClientMultiThreadedExecution.serverUrl + "/api/v2/mttask/",
                 "https://extendsclass.com/mock/rest/d2af925eee064f3518279e8b1d1ed1ce/ns",
                 "https://extendsclass.com/mock/rest/d2af925eee064f3518279e8b1d1ed1ce/ns",};
-            */
+             */
             // create a thread for each URI
             GetThread[] threads = new GetThread[mctURI.size()];
             for (int i = 0; i < mctURI.size(); i++) {
@@ -149,17 +155,17 @@ public class ClientMultiThreadedExecution {
         @Override
         public void run() {
             try {
-                System.out.println("Thread-"+ id + ": getting XML using " + httpget.getURI());
-                String[] urlToekns=httpget.getURI().toString().split("/");
-                httpget.addHeader("Accept", "Application/xml");
+                System.out.println("Thread-" + id + ": getting "+ClientMultiThreadedExecution.fileType+" using " + httpget.getURI());
+                String[] urlToekns = httpget.getURI().toString().split("/");
+                httpget.addHeader("Accept", "Application/"+ClientMultiThreadedExecution.fileType);
                 httpget.addHeader("icsessionid", ClientMultiThreadedExecution.icSessionId);
                 try (CloseableHttpResponse response = httpClient.execute(httpget, context)) {
-                    System.out.println("Thread-"+id + ": received XML for "+ urlToekns[urlToekns.length-1]);
+                    System.out.println("Thread-" + id + ": received "+ClientMultiThreadedExecution.fileType+" for " + urlToekns[urlToekns.length - 1]);
                     // get the response body as an array of bytes
                     // HttpEntity entity = response.getEntity().
                     String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-                    System.out.println("Thread-"+ id + ": writing mttXml of " + urlToekns[urlToekns.length-1]);
-                    File file = new File(urlToekns[urlToekns.length-1] + ".xml");
+                    System.out.println("Thread-" + id + ": writing mtt "+ClientMultiThreadedExecution.fileType+" of " + urlToekns[urlToekns.length - 1]);
+                    File file = new File("./xmlStore/" + urlToekns[urlToekns.length - 1] +"."+ClientMultiThreadedExecution.fileType);
                     FileUtils.writeStringToFile(file, responseBody);
                     //https://www.tutorialspoint.com/jsoup/jsoup_parse_body.htm
                     /*if (entity != null) {
@@ -183,12 +189,12 @@ public class ClientMultiThreadedExecution {
         obj.put("username", uname);
         obj.put("password", passwd);
         payload = obj.toString();
-
+        System.out.println(payload);
         String line;
         StringBuilder jsonString = new StringBuilder();
         try {
             //http://stackoverflow.com/questions/15570656/how-to-send-request-payload-to-rest-api-in-java
-            URL url = new URL("https://" + hostname+ "/ma/api/v2/user/login");
+            URL url = new URL("https://" + hostname + "/ma/api/v2/user/login");
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
             connection.setDoInput(true);
             connection.setDoOutput(true);
@@ -225,6 +231,7 @@ public class ClientMultiThreadedExecution {
 
     public static void getMttList() {
         sHrr = new HttpRequestResponse();
+        sHeaders.put("Accept", "application/xml");
         sHrr.setMethod("GET");
         sHeaders.put("icsessionid", ClientMultiThreadedExecution.icSessionId);
         sHrr.setHeaders(sHeaders);
