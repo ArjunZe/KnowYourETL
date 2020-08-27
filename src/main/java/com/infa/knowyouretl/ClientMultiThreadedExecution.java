@@ -17,6 +17,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,12 +50,13 @@ public class ClientMultiThreadedExecution {
     public static String uname;
     public static String passwd;
     public static String hostname;
-    public static String fileType;
+    public static String contentType;
     public static String podID = null;
     private static HttpRequestResponse sHrr;
     private static Map<String, String> sHeaders = new HashMap<String, String>();
-    private static Map<String, String> mctMapList = new HashMap<>();
-    private static List<String> mctIdList;
+    private static List<String> idList;
+    private static List<String> connIdList;
+    private static List<String> operations;
 
     public static void main(String[] args) throws IOException {
 
@@ -67,35 +69,34 @@ public class ClientMultiThreadedExecution {
         passwd = args[1];
         hostname = args[2];
         if (args[3].equalsIgnoreCase("xml")) {
-            ClientMultiThreadedExecution.fileType = "xml";
+            ClientMultiThreadedExecution.contentType = "xml";
         }
         if (args[3].equalsIgnoreCase("json")) {
-            ClientMultiThreadedExecution.fileType = "json";
+            ClientMultiThreadedExecution.contentType = "json";
         }
-        ClientMultiThreadedExecution.mctIdList = new ArrayList();
+
+        ClientMultiThreadedExecution.operations.addAll(Arrays.asList("mttask", "connection"));
+        ClientMultiThreadedExecution.idList = new ArrayList();
+        ClientMultiThreadedExecution.connIdList = new ArrayList();
         ClientMultiThreadedExecution.login();
-        ClientMultiThreadedExecution.getMttList();
-        //https://stackoverflow.com/questions/23920425/loop-arraylist-in-batches
-        //final List<String> listToBatch = new ArrayList<>();
-        //listToBatch.add("test");
-        final List<List<String>> batch = Lists.partition(ClientMultiThreadedExecution.mctIdList, 10);
-        batch.forEach((list) -> {
-            // Add your code here
-            // list.forEach((mcid) -> {
-            //   System.out.println("calling httpts:/getmci:1111/" + mcid);
-            //});
-            try {
-                ClientMultiThreadedExecution.devideNconcur(list);
-            } catch (IOException ioe) {
-                System.out.println(" - error: " + ioe);
-            } catch (InterruptedException ex) {
-                java.util.logging.Logger.getLogger(ClientMultiThreadedExecution.class.getName()).log(Level.SEVERE, null, ex);
-            }
+        operations.forEach((operation) -> {
+            //https://stackoverflow.com/questions/23920425/loop-arraylist-in-batches
+            ClientMultiThreadedExecution.getIdList(operation);
+            final List<List<String>> batch = Lists.partition(ClientMultiThreadedExecution.idList, 10);
+            batch.forEach((list) -> {
+                try {
+                    ClientMultiThreadedExecution.devideNconcur(list,operation);
+                } catch (IOException ioe) {
+                    System.out.println(" - error: " + ioe);
+                } catch (InterruptedException ex) {
+                    java.util.logging.Logger.getLogger(ClientMultiThreadedExecution.class.getName()).log(Level.SEVERE, null, ex);
+                }
+            });
         });
         //
     }
 
-    public static void devideNconcur(List<String> batch) throws IOException, InterruptedException {
+    public static void devideNconcur(List<String> batch, String operation) throws IOException, InterruptedException {
         // Create an HttpClient with the ThreadSafeClientConnManager.
         // This connection manager must be used if more than one thread will
         // be using the HttpClient.
@@ -107,8 +108,8 @@ public class ClientMultiThreadedExecution {
                 .build()) {
             // create an array of URIs to perform GETs on
             List<String> mctURI = new ArrayList();
-            batch.forEach((mcid) -> {
-                mctURI.add(ClientMultiThreadedExecution.serverUrl + "/api/v2/mttask/" + mcid);
+            batch.forEach((id) -> {
+                mctURI.add(ClientMultiThreadedExecution.serverUrl + "/api/v2/"+operation+"/" + id);
             });
             /*String[] urisToGet = {
                 ClientMultiThreadedExecution.serverUrl + "/api/v2/mttask/",
@@ -155,17 +156,17 @@ public class ClientMultiThreadedExecution {
         @Override
         public void run() {
             try {
-                System.out.println("Thread-" + id + ": getting "+ClientMultiThreadedExecution.fileType+" using " + httpget.getURI());
+                System.out.println("Thread-" + id + ": getting " + ClientMultiThreadedExecution.contentType + " using " + httpget.getURI());
                 String[] urlToekns = httpget.getURI().toString().split("/");
-                httpget.addHeader("Accept", "Application/"+ClientMultiThreadedExecution.fileType);
+                httpget.addHeader("Accept", "Application/" + ClientMultiThreadedExecution.contentType);
                 httpget.addHeader("icsessionid", ClientMultiThreadedExecution.icSessionId);
                 try (CloseableHttpResponse response = httpClient.execute(httpget, context)) {
-                    System.out.println("Thread-" + id + ": received "+ClientMultiThreadedExecution.fileType+" for " + urlToekns[urlToekns.length - 1]);
+                    System.out.println("Thread-" + id + ": received " + ClientMultiThreadedExecution.contentType + " for " + urlToekns[urlToekns.length - 1]);
                     // get the response body as an array of bytes
                     // HttpEntity entity = response.getEntity().
                     String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
-                    System.out.println("Thread-" + id + ": writing mtt "+ClientMultiThreadedExecution.fileType+" of " + urlToekns[urlToekns.length - 1]);
-                    File file = new File("./xmlStore/" + urlToekns[urlToekns.length - 1] +"."+ClientMultiThreadedExecution.fileType);
+                    System.out.println("Thread-" + id + ": writing " + ClientMultiThreadedExecution.contentType + " of " + urlToekns[urlToekns.length - 1]);
+                    File file = new File("./xmlStore/" + urlToekns[urlToekns.length - 1] + "." + ClientMultiThreadedExecution.contentType);
                     FileUtils.writeStringToFile(file, responseBody);
                     //https://www.tutorialspoint.com/jsoup/jsoup_parse_body.htm
                     /*if (entity != null) {
@@ -229,13 +230,13 @@ public class ClientMultiThreadedExecution {
 
     }
 
-    public static void getMttList() {
+    public static void getIdList(String operation) {
         sHrr = new HttpRequestResponse();
         sHeaders.put("Accept", "application/xml");
         sHrr.setMethod("GET");
         sHeaders.put("icsessionid", ClientMultiThreadedExecution.icSessionId);
         sHrr.setHeaders(sHeaders);
-        sHrr.setUrl(ClientMultiThreadedExecution.serverUrl + "/api/v2/mttask");
+        sHrr.setUrl(ClientMultiThreadedExecution.serverUrl + "/api/v2/" + operation);
         sHrr.makeCall();
         if (sHrr.getUrlStatus() == 200) {
             String mtList = sHrr.getResponse();
@@ -245,18 +246,11 @@ public class ClientMultiThreadedExecution {
                 //Elements aList = document.select("mtTask");
                 Elements paragraphs = body.getElementsByTag("id");
                 paragraphs.forEach((paragraph) -> {
-                    ClientMultiThreadedExecution.mctIdList.add(paragraph.text());
+                    ClientMultiThreadedExecution.idList.add(paragraph.text());
                 });
-                /* logger.info(aList);
-                if (aList.size() <= 0) {
-                //System.out.print("emprty");
-                } else {
-                aList.forEach((eachAgentInfo) -> {
-                mctMapList.put(eachAgentInfo.id(), eachAgentInfo.attr("href").split("'")[1]);
-                });
-                }*/
             } catch (JSONException e) {
                 // TODO Auto-generated catch block
+                e.printStackTrace();
             }
 
         } else {
