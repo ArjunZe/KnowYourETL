@@ -55,7 +55,6 @@ public class ClientMultiThreadedExecution {
     private static HttpRequestResponse sHrr;
     private static Map<String, String> sHeaders = new HashMap<String, String>();
     private static List<String> idList;
-    private static List<String> connIdList;
     private static List<String> operations;
 
     public static void main(String[] args) throws IOException {
@@ -74,10 +73,10 @@ public class ClientMultiThreadedExecution {
         if (args[3].equalsIgnoreCase("json")) {
             ClientMultiThreadedExecution.contentType = "json";
         }
-
-        ClientMultiThreadedExecution.operations.addAll(Arrays.asList("mttask", "connection"));
+         ClientMultiThreadedExecution.operations=new ArrayList();
+        ClientMultiThreadedExecution.operations.add("mttask");
+        ClientMultiThreadedExecution.operations.add("connection");
         ClientMultiThreadedExecution.idList = new ArrayList();
-        ClientMultiThreadedExecution.connIdList = new ArrayList();
         ClientMultiThreadedExecution.login();
         operations.forEach((operation) -> {
             //https://stackoverflow.com/questions/23920425/loop-arraylist-in-batches
@@ -111,11 +110,6 @@ public class ClientMultiThreadedExecution {
             batch.forEach((id) -> {
                 mctURI.add(ClientMultiThreadedExecution.serverUrl + "/api/v2/"+operation+"/" + id);
             });
-            /*String[] urisToGet = {
-                ClientMultiThreadedExecution.serverUrl + "/api/v2/mttask/",
-                "https://extendsclass.com/mock/rest/d2af925eee064f3518279e8b1d1ed1ce/ns",
-                "https://extendsclass.com/mock/rest/d2af925eee064f3518279e8b1d1ed1ce/ns",};
-             */
             // create a thread for each URI
             GetThread[] threads = new GetThread[mctURI.size()];
             for (int i = 0; i < mctURI.size(); i++) {
@@ -166,14 +160,9 @@ public class ClientMultiThreadedExecution {
                     // HttpEntity entity = response.getEntity().
                     String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
                     System.out.println("Thread-" + id + ": writing " + ClientMultiThreadedExecution.contentType + " of " + urlToekns[urlToekns.length - 1]);
-                    File file = new File("./xmlStore/" + urlToekns[urlToekns.length - 1] + "." + ClientMultiThreadedExecution.contentType);
+                    File file = new File("./xmlStore/"+urlToekns[urlToekns.length - 2]+"/" + urlToekns[urlToekns.length - 1] + "." + ClientMultiThreadedExecution.contentType);
                     FileUtils.writeStringToFile(file, responseBody);
                     //https://www.tutorialspoint.com/jsoup/jsoup_parse_body.htm
-                    /*if (entity != null) {
-                        byte[] bytes = EntityUtils.toByteArray(entity);
-                        System.out.println(id + " - " + bytes.length + " bytes read");
-                        System.out.println(id + " - Response body: " + responseBody);
-                    }*/
                 }
             } catch (IOException e) {
                 System.out.println(id + " - error: " + e);
