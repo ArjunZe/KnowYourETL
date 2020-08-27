@@ -17,7 +17,6 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -238,12 +237,10 @@ public class ClientMultiThreadedExecution {
                     ClientMultiThreadedExecution.idList.add(paragraph.text());
                 });
             } catch (JSONException e) {
-                // TODO Auto-generated catch block
                 e.printStackTrace();
             }
 
         } else {
-            //AlertWindow.error(sHrr.getErrorString());
             System.out.print(String.format("Login failed : HTTP status = %d", (int) sHrr.getUrlStatus()));
         }
     }
