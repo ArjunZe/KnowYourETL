@@ -20,6 +20,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import org.apache.commons.io.FileUtils;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -56,7 +59,7 @@ public class ClientMultiThreadedExecution {
     private static List<String> idList;
     private static List<String> operations;
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, InterruptedException {
 
         if (args.length < 2) {
             System.out.println();
@@ -72,18 +75,29 @@ public class ClientMultiThreadedExecution {
         if (args[3].equalsIgnoreCase("json")) {
             ClientMultiThreadedExecution.contentType = "json";
         }
-         ClientMultiThreadedExecution.operations=new ArrayList();
+        ClientMultiThreadedExecution.operations = new ArrayList();
+        ClientMultiThreadedExecution.operations.add("dsstask");
+        ClientMultiThreadedExecution.operations.add("drstask");
         ClientMultiThreadedExecution.operations.add("mttask");
         ClientMultiThreadedExecution.operations.add("connection");
         ClientMultiThreadedExecution.idList = new ArrayList();
-        ClientMultiThreadedExecution.login();
+        //ClientMultiThreadedExecution.login();
+        //https://stackoverflow.com/questions/426758/running-a-java-thread-in-intervals
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        Runnable periodicTask = new Runnable() {
+            public void run() {
+                ClientMultiThreadedExecution.login();
+            }
+        };
+        executor.scheduleAtFixedRate(periodicTask, 0, 25*60, TimeUnit.SECONDS);
+        Thread.sleep(10000);
         operations.forEach((operation) -> {
             //https://stackoverflow.com/questions/23920425/loop-arraylist-in-batches
             ClientMultiThreadedExecution.getIdList(operation);
             final List<List<String>> batch = Lists.partition(ClientMultiThreadedExecution.idList, 10);
             batch.forEach((list) -> {
                 try {
-                    ClientMultiThreadedExecution.devideNconcur(list,operation);
+                    ClientMultiThreadedExecution.devideNconcur(list, operation);
                 } catch (IOException ioe) {
                     System.out.println(" - error: " + ioe);
                 } catch (InterruptedException ex) {
@@ -91,7 +105,8 @@ public class ClientMultiThreadedExecution {
                 }
             });
         });
-        //
+        System.out.println("Done!");
+        System.exit(0);
     }
 
     public static void devideNconcur(List<String> batch, String operation) throws IOException, InterruptedException {
@@ -107,7 +122,7 @@ public class ClientMultiThreadedExecution {
             // create an array of URIs to perform GETs on
             List<String> mctURI = new ArrayList();
             batch.forEach((id) -> {
-                mctURI.add(ClientMultiThreadedExecution.serverUrl + "/api/v2/"+operation+"/" + id);
+                mctURI.add(ClientMultiThreadedExecution.serverUrl + "/api/v2/" + operation + "/" + id);
             });
             // create a thread for each URI
             GetThread[] threads = new GetThread[mctURI.size()];
@@ -159,7 +174,7 @@ public class ClientMultiThreadedExecution {
                     // HttpEntity entity = response.getEntity().
                     String responseBody = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
                     System.out.println("Thread-" + id + ": writing " + ClientMultiThreadedExecution.contentType + " of " + urlToekns[urlToekns.length - 1]);
-                    File file = new File("./xmlStore/"+urlToekns[urlToekns.length - 2]+"/" + urlToekns[urlToekns.length - 1] + "." + ClientMultiThreadedExecution.contentType);
+                    File file = new File("./xmlStore/" + urlToekns[urlToekns.length - 2] + "/" + urlToekns[urlToekns.length - 1] + "." + ClientMultiThreadedExecution.contentType);
                     FileUtils.writeStringToFile(file, responseBody);
                     //https://www.tutorialspoint.com/jsoup/jsoup_parse_body.htm
                 }
