@@ -87,7 +87,7 @@ public class HttpRequestResponse implements AutoCloseable {
      * @param method "GET"/"POST"
      */
     public void setMethod(String method) {
-        System.out.println(String.format("Method type : %s", method));
+        //System.out.println(String.format("Method type : %s", method));
         this.method = method;
     }
 

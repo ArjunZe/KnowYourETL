@@ -10,20 +10,30 @@ package com.infa.knowyouretl;
 import com.google.common.collect.Lists;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.apache.commons.io.FileUtils;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -33,6 +43,8 @@ import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.protocol.BasicHttpContext;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.EntityUtils;
+import org.joda.time.DateTime;
+import org.joda.time.format.ISODateTimeFormat;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
@@ -42,7 +54,7 @@ import org.jsoup.select.Elements;
 
 /**
  *
- * @author mreddy
+ * @author mallikarjun reddy
  */
 public class ClientMultiThreadedExecution {
 
@@ -58,28 +70,46 @@ public class ClientMultiThreadedExecution {
     private static Map<String, String> sHeaders = new HashMap<String, String>();
     private static List<String> idList;
     private static List<String> operations;
+    private static String mode;
+    private static String lastruntime;
 
     public static void main(String[] args) throws IOException, InterruptedException {
-
-        if (args.length < 2) {
-            System.out.println();
-            System.out.println("to run -> java -jar knowYourETL.jar <IICSusername> <IICSpassword> <hostname like dm-us.informaticacloud.com> <OutPutType as xml/json>");
+        int argLength = args.length;
+        if (argLength < 4) {
+            System.out.println("to run -> java -jar knowYourETL.jar <IICSusername> <IICSpassword> <hostname like dm-us.informaticacloud.com> <colon Separated AssetTypes connection:mttask:dsstask:drstask > <OutPutType as xml/json> <delta>");
             System.exit(0);
+        }
+        if (argLength == 6) {
+            mode = args[5];
+            if (Files.exists(Paths.get(".lastruntime"))) {
+                lastruntime = new String(Files.readAllBytes(Paths.get(".lastruntime")));
+                System.out.println("Running in Delta Mode and Last Run Time is '" + lastruntime + "'");
+            } else {
+                System.out.println("Delta Mode Selected but .lastrumtime file does not exists.\nNote: .lastruntime is created at the end of the tool execution.\nIf this is the 1st time, try without delta. Otherwise, create .lastruntime with UTC time in it. Ex: 2021-05-30T14:19:38.146Z");
+                System.exit(0);
+            }
         }
         uname = args[0];
         passwd = args[1];
         hostname = args[2];
-        if (args[3].equalsIgnoreCase("xml")) {
+        if (args[4].equalsIgnoreCase("xml")) {
             ClientMultiThreadedExecution.contentType = "xml";
         }
-        if (args[3].equalsIgnoreCase("json")) {
+        if (args[4].equalsIgnoreCase("json")) {
             ClientMultiThreadedExecution.contentType = "json";
         }
+
         ClientMultiThreadedExecution.operations = new ArrayList();
-        ClientMultiThreadedExecution.operations.add("dsstask");
-        ClientMultiThreadedExecution.operations.add("drstask");
-        ClientMultiThreadedExecution.operations.add("mttask");
-        ClientMultiThreadedExecution.operations.add("connection");
+        List<String> assetTypes = Arrays.asList(args[3].split(":"));
+        assetTypes.forEach((asset) -> {
+            System.out.println("Adding asset type '" + asset + "' to the operations list");
+            ClientMultiThreadedExecution.operations.add(asset);
+        });
+        System.out.println("Content-Type is set to '" + args[4] + "'");
+//        ClientMultiThreadedExecution.operations.add("dsstask");
+//        ClientMultiThreadedExecution.operations.add("drstask");
+//        ClientMultiThreadedExecution.operations.add("mttask");
+//        ClientMultiThreadedExecution.operations.add("connection");
         ClientMultiThreadedExecution.idList = new ArrayList();
         //ClientMultiThreadedExecution.login();
         //https://stackoverflow.com/questions/426758/running-a-java-thread-in-intervals
@@ -89,11 +119,15 @@ public class ClientMultiThreadedExecution {
                 ClientMultiThreadedExecution.login();
             }
         };
-        executor.scheduleAtFixedRate(periodicTask, 0, 25*60, TimeUnit.SECONDS);
+        executor.scheduleAtFixedRate(periodicTask, 0, 25 * 60, TimeUnit.SECONDS);
         Thread.sleep(10000);
         operations.forEach((operation) -> {
-            //https://stackoverflow.com/questions/23920425/loop-arraylist-in-batches
-            ClientMultiThreadedExecution.getIdList(operation);
+            try {
+                //https://stackoverflow.com/questions/23920425/loop-arraylist-in-batches
+                ClientMultiThreadedExecution.getIdList(operation);
+            } catch (ParseException ex) {
+                Logger.getLogger(ClientMultiThreadedExecution.class.getName()).log(Level.SEVERE, null, ex);
+            }
             final List<List<String>> batch = Lists.partition(ClientMultiThreadedExecution.idList, 10);
             batch.forEach((list) -> {
                 try {
@@ -105,6 +139,12 @@ public class ClientMultiThreadedExecution {
                 }
             });
         });
+
+        Instant instant = Instant.now();
+        System.out.println("Writing Last Run Time " + instant + " to .lastruntime file");
+        FileWriter myWriter = new FileWriter(".lastruntime");
+        myWriter.write(instant.toString());
+        myWriter.close();
         System.out.println("Done!");
         System.exit(0);
     }
@@ -193,7 +233,7 @@ public class ClientMultiThreadedExecution {
         obj.put("username", uname);
         obj.put("password", passwd);
         payload = obj.toString();
-        System.out.println(payload);
+        System.out.println("Login Payload :" + payload);
         String line;
         StringBuilder jsonString = new StringBuilder();
         try {
@@ -229,11 +269,11 @@ public class ClientMultiThreadedExecution {
         }
         ClientMultiThreadedExecution.icSessionId = jsonObject.getString("icSessionId");
         ClientMultiThreadedExecution.serverUrl = jsonObject.getString("serverUrl");
-        System.out.print("token & url " + jsonObject.getString("icSessionId") + "," + jsonObject.getString("serverUrl"));
+        System.out.print("icSessionID & Pod URL is -> " + jsonObject.getString("icSessionId") + "," + jsonObject.getString("serverUrl"));
 
     }
 
-    public static void getIdList(String operation) {
+    public static void getIdList(String operation) throws ParseException {
         sHrr = new HttpRequestResponse();
         sHeaders.put("Accept", "application/xml");
         sHrr.setMethod("GET");
@@ -247,10 +287,38 @@ public class ClientMultiThreadedExecution {
                 Document document = Jsoup.parseBodyFragment(mtList);
                 Element body = document.body();
                 //Elements aList = document.select("mtTask");
-                Elements paragraphs = body.getElementsByTag("id");
-                paragraphs.forEach((paragraph) -> {
-                    ClientMultiThreadedExecution.idList.add(paragraph.text());
-                });
+                Elements elements = document.body().select(operation);
+//                for (Element element : elements) {
+//                    ClientMultiThreadedExecution.idList.add(element.select("id").text());
+//                    System.out.println(element.select("id").text() + "-" + element.select("updateTime").text());
+//                }
+//                Elements paragraphs = body.getElementsByTag("id");
+//                String updateTime = body.getElementsByTag("updateTime").text();
+                if (mode != null && mode.equalsIgnoreCase("delta")) {
+                    
+                    DateFormat df = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.sss'Z'");
+                    df.setTimeZone(TimeZone.getTimeZone("UTC"));
+                    DateTime lastruntimeUTC = ISODateTimeFormat.dateTimeParser().parseDateTime(lastruntime);
+                    DateTime updateTimeUTC;
+                    for (Element element : elements) {
+                        updateTimeUTC =ISODateTimeFormat.dateTimeParser().parseDateTime(element.select("updateTime").text());
+                        System.out.println("after ? "+updateTimeUTC.isAfter(lastruntimeUTC));
+                        System.out.println(updateTimeUTC+"-"+lastruntimeUTC);
+                        if (updateTimeUTC.isAfter(lastruntimeUTC)) {
+                            ClientMultiThreadedExecution.idList.add(element.select("id").text());         
+                        System.out.println(element.select("id").text() + "-" + element.select("updateTime").text()+"-"+lastruntime);
+                        }
+                    }
+                } else {
+                    for (Element element : elements) {
+                        ClientMultiThreadedExecution.idList.add(element.select("id").text());
+                        //System.out.println(element.select("id").text() + "-" + element.select("updateTime").text());
+                    }
+                }
+//                System.out.println("Adding updateTime " + body.getElementsByTag("updateTime").text());
+//                paragraphs.forEach((paragraph) -> {
+//                    ClientMultiThreadedExecution.idList.add(paragraph.text());
+//                });
             } catch (JSONException e) {
                 e.printStackTrace();
             }
